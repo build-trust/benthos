@@ -1,0 +1,17 @@
+input:
+  ockam_kafka_franz:
+    seed_brokers: [ redpanda:9092 ]
+    topics: [ topic_A ]
+    consumer_group: example_group
+
+pipeline:
+  threads: 5
+  processors:
+    - bloblang: |
+        root.doc = this | content().string()
+        root.length = content().length()
+        root.topic = meta("kafka_topic")
+        root.sleep = random_int(max:10)
+
+output:
+  stdout: {}

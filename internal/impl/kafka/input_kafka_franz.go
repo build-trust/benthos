@@ -90,7 +90,7 @@ Finally, it's also possible to specify an explicit offset to consume from by add
 			Default(true).
 			Advanced()).
 		Field(service.NewTLSToggledField("tls")).
-		Field(saslField()).
+		Field(SaslField()).
 		Field(service.NewBoolField("multi_header").Description("Decode headers into lists to allow handling of multiple values with the same key").Default(false).Advanced()).
 		Field(service.NewBatchPolicyField("batching").
 			Description("Allows you to configure a [batching policy](/docs/configuration/batching) that applies to individual topic partitions in order to batch messages together before flushing them for processing. Batching can be beneficial for performance as well as useful for windowed processing, and doing so this way preserves the ordering of topic partitions.").
@@ -110,7 +110,7 @@ root = if $has_topic_partitions {
 func init() {
 	err := service.RegisterBatchInput("kafka_franz", franzKafkaInputConfig(),
 		func(conf *service.ParsedConfig, mgr *service.Resources) (service.BatchInput, error) {
-			rdr, err := newFranzKafkaReaderFromConfig(conf, mgr)
+			rdr, err := NewFranzKafkaReaderFromConfig(conf, mgr)
 			if err != nil {
 				return nil, err
 			}
@@ -128,7 +128,7 @@ type batchWithAckFn struct {
 	batch service.MessageBatch
 }
 
-type franzKafkaReader struct {
+type FranzKafkaReader struct {
 	seedBrokers     []string
 	topics          []string
 	topicPartitions map[string]map[int32]kgo.Offset
@@ -150,17 +150,17 @@ type franzKafkaReader struct {
 	shutSig   *shutdown.Signaller
 }
 
-func (f *franzKafkaReader) getBatchChan() chan batchWithAckFn {
+func (f *FranzKafkaReader) getBatchChan() chan batchWithAckFn {
 	c, _ := f.batchChan.Load().(chan batchWithAckFn)
 	return c
 }
 
-func (f *franzKafkaReader) storeBatchChan(c chan batchWithAckFn) {
+func (f *FranzKafkaReader) storeBatchChan(c chan batchWithAckFn) {
 	f.batchChan.Store(c)
 }
 
-func newFranzKafkaReaderFromConfig(conf *service.ParsedConfig, res *service.Resources) (*franzKafkaReader, error) {
-	f := franzKafkaReader{
+func NewFranzKafkaReaderFromConfig(conf *service.ParsedConfig, res *service.Resources) (*FranzKafkaReader, error) {
+	f := FranzKafkaReader{
 		res:     res,
 		log:     res.Logger(),
 		shutSig: shutdown.NewSignaller(),
@@ -253,7 +253,7 @@ type msgWithRecord struct {
 	r   *kgo.Record
 }
 
-func (f *franzKafkaReader) recordToMessage(record *kgo.Record) *msgWithRecord {
+func (f *FranzKafkaReader) recordToMessage(record *kgo.Record) *msgWithRecord {
 	msg := service.NewMessage(record.Value)
 	msg.MetaSetMut("kafka_key", string(record.Key))
 	msg.MetaSetMut("kafka_topic", record.Topic)
@@ -576,7 +576,7 @@ func (c *checkpointTracker) removeTopicPartitions(ctx context.Context, m map[str
 
 //------------------------------------------------------------------------------
 
-func (f *franzKafkaReader) Connect(ctx context.Context) error {
+func (f *FranzKafkaReader) Connect(ctx context.Context) error {
 	if f.getBatchChan() != nil {
 		return nil
 	}
@@ -733,7 +733,7 @@ func (f *franzKafkaReader) Connect(ctx context.Context) error {
 	return nil
 }
 
-func (f *franzKafkaReader) ReadBatch(ctx context.Context) (service.MessageBatch, service.AckFunc, error) {
+func (f *FranzKafkaReader) ReadBatch(ctx context.Context) (service.MessageBatch, service.AckFunc, error) {
 	batchChan := f.getBatchChan()
 	if batchChan == nil {
 		return nil, nil, service.ErrNotConnected
@@ -757,7 +757,7 @@ func (f *franzKafkaReader) ReadBatch(ctx context.Context) (service.MessageBatch,
 	}, nil
 }
 
-func (f *franzKafkaReader) Close(ctx context.Context) error {
+func (f *FranzKafkaReader) Close(ctx context.Context) error {
 	go func() {
 		f.shutSig.TriggerSoftStop()
 		if f.getBatchChan() == nil {

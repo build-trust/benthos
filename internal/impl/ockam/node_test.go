@@ -22,7 +22,7 @@ func TestNodeCreate(t *testing.T) {
 	node := ockam.Node{Name: "a", Config: config}
 	err := node.Create()
 	if err != nil {
-		t.Error("failed to create a node")
+		t.Error("failed to create a node, error: ", err)
 	}
 
 	isRunning := node.IsRunning()

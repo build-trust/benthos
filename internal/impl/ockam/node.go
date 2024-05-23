@@ -82,7 +82,7 @@ type Node struct {
 }
 
 func (n *Node) Create() error {
-	cmd := exec.Command("ockam", "node", "create", "--node-config", n.Config, "--variable", "NODE_NAME="+n.Name)
+	cmd := exec.Command("ockam", "node", "create", "--node-config", n.Config)
 	return RunCommand(cmd)
 }
 

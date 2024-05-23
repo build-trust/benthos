@@ -1,0 +1,7 @@
+input:
+  stdin: {}
+
+output:
+  kafka_franz:
+    seed_brokers: [ redpanda:9092 ]
+    topic: topic_A
