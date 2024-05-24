@@ -83,79 +83,11 @@ root = if $has_topic_partitions {
 `)
 }
 
-func newOckamFranzKafkaInput(conf *service.ParsedConfig, mgr *service.Resources) (*ockamFranzKafkaInput, error) {
-	// Create a kafkaReader instance that the ockamFranzKafkaInput will use
-	franzKafkaReader, err := kafka.NewFranzKafkaReaderFromConfig(conf, mgr)
-	if err != nil {
-		return nil, err
-	}
-
-	nodeName, err := conf.FieldString("node_name")
-	if err != nil {
-		nodeName = "kafka-input-" + strconv.Itoa(rand.Int())
-	}
-
-	nodePort, err := conf.FieldString("node_port")
-	if err != nil {
-		// If the node_port is not set, find a free port
-		listener, err := net.Listen("tcp", ":0")
-		if err != nil {
-			panic(err)
-		}
-		nodePort = strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
-		_ = listener.Close()
-	}
-
-	// Use the first "seed_brokers" field item as the bootstrap server
-	seedBrokers, err := conf.FieldStringList("seed_brokers")
-	if err != nil {
-		return nil, err
-	}
-	bootstrapServer := strings.Split(seedBrokers[0], ",")[0]
-
-	kafkaInletAddress, err := conf.FieldString("inlet_address")
-	if err != nil {
-		listener, err := net.Listen("tcp", ":0")
-		if err != nil {
-			panic(err)
-		}
-		port := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
-		kafkaInletAddress = "0.0.0.0:" + port
-		_ = listener.Close()
-	}
-
-	_, tls, err := conf.FieldTLSToggled("tls")
-	if err != nil {
-		tls = false
-	}
-
-	nodeConfig := "{" +
-		"name:" + nodeName + "," +
-		"tcp-listener-address: 0.0.0.0:" + nodePort + "," +
-		"kafka-inlet: {" +
-		"from: " + kafkaInletAddress + "," +
-		"to: self" +
-		"avoid-publishing: true}" +
-		"kafka-outlet: {" +
-		"bootstrap-server:" + bootstrapServer + "," +
-		"tls:" + strconv.FormatBool(tls) + "}" +
-		"}"
-	node := Node{Name: nodeName, Config: nodeConfig}
-	err = node.Create()
-	if err != nil {
-		return nil, err
-	}
-	return &ockamFranzKafkaInput{
-		franzKafkaReader,
-		node,
-	}, nil
-}
-
 func init() {
 	err := service.RegisterBatchInput(
 		"ockam_kafka_franz", ockamFranzKafkaInputConfig(),
 		func(conf *service.ParsedConfig, mgr *service.Resources) (service.BatchInput, error) {
-			i, err := newOckamFranzKafkaInput(conf, mgr)
+			i, err := newOckamKafkaFranzInput(conf, mgr)
 			if err != nil {
 				return nil, err
 			}
@@ -173,6 +105,74 @@ func init() {
 }
 
 //------------------------------------------------------------------------------
+
+func newOckamKafkaFranzInput(conf *service.ParsedConfig, mgr *service.Resources) (*ockamFranzKafkaInput, error) {
+	// Create a franzKafkaReader instance that the ockamFranzKafkaInput will use
+	franzKafkaReader, err := kafka.NewFranzKafkaReaderFromConfig(conf, mgr)
+	if err != nil {
+		return nil, err
+	}
+
+	nodeName, err := conf.FieldString("node_name")
+	if err != nil {
+		nodeName = "kafka-input-" + strconv.Itoa(rand.Int())
+	}
+
+	nodePort, err := conf.FieldString("node_port")
+	if err != nil {
+		// If the node_port is not set, find a free port
+		listener, err := net.Listen("tcp", ":0")
+		if err != nil {
+			return nil, err
+		}
+		nodePort = strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
+		_ = listener.Close()
+	}
+
+	// Use the first "seed_brokers" field item as the bootstrap server
+	seedBrokers, err := conf.FieldStringList("seed_brokers")
+	if err != nil {
+		return nil, err
+	}
+	bootstrapServer := strings.Split(seedBrokers[0], ",")[0]
+
+	kafkaInletAddress, err := conf.FieldString("inlet_address")
+	if err != nil {
+		listener, err := net.Listen("tcp", ":0")
+		if err != nil {
+			return nil, err
+		}
+		port := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
+		kafkaInletAddress = "0.0.0.0:" + port
+		_ = listener.Close()
+	}
+
+	_, tls, err := conf.FieldTLSToggled("tls")
+	if err != nil {
+		tls = false
+	}
+
+	nodeConfig := "{" +
+		"name:" + nodeName + "," +
+		"tcp-listener-address: 0.0.0.0:" + nodePort + "," +
+		"kafka-inlet: {" +
+		"from: " + kafkaInletAddress + "," +
+		"to: self," +
+		"avoid-publishing: true}," +
+		"kafka-outlet: {" +
+		"bootstrap-server:" + bootstrapServer + "," +
+		"tls:" + strconv.FormatBool(tls) + "}" +
+		"}"
+	node := Node{Name: nodeName, Config: nodeConfig}
+	err = node.Create()
+	if err != nil {
+		return nil, err
+	}
+	return &ockamFranzKafkaInput{
+		franzKafkaReader,
+		node,
+	}, nil
+}
 
 type ockamFranzKafkaInput struct {
 	*kafka.FranzKafkaReader

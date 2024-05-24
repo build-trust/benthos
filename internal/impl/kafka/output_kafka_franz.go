@@ -107,7 +107,7 @@ func init() {
 			if batchPolicy, err = conf.FieldBatchPolicy("batching"); err != nil {
 				return
 			}
-			output, err = newFranzKafkaWriterFromConfig(conf, mgr.Logger())
+			output, err = NewFranzKafkaWriterFromConfig(conf, mgr.Logger())
 			return
 		})
 	if err != nil {
@@ -117,7 +117,7 @@ func init() {
 
 //------------------------------------------------------------------------------
 
-type franzKafkaWriter struct {
+type FranzKafkaWriter struct {
 	seedBrokers      []string
 	topicStr         string
 	topic            *service.InterpolatedString
@@ -139,8 +139,8 @@ type franzKafkaWriter struct {
 	log *service.Logger
 }
 
-func newFranzKafkaWriterFromConfig(conf *service.ParsedConfig, log *service.Logger) (*franzKafkaWriter, error) {
-	f := franzKafkaWriter{
+func NewFranzKafkaWriterFromConfig(conf *service.ParsedConfig, log *service.Logger) (*FranzKafkaWriter, error) {
+	f := FranzKafkaWriter{
 		log: log,
 	}
 
@@ -266,7 +266,7 @@ func newFranzKafkaWriterFromConfig(conf *service.ParsedConfig, log *service.Logg
 
 //------------------------------------------------------------------------------
 
-func (f *franzKafkaWriter) Connect(ctx context.Context) error {
+func (f *FranzKafkaWriter) Connect(ctx context.Context) error {
 	if f.client != nil {
 		return nil
 	}
@@ -303,7 +303,7 @@ func (f *franzKafkaWriter) Connect(ctx context.Context) error {
 	return nil
 }
 
-func (f *franzKafkaWriter) WriteBatch(ctx context.Context, b service.MessageBatch) (err error) {
+func (f *FranzKafkaWriter) WriteBatch(ctx context.Context, b service.MessageBatch) (err error) {
 	if f.client == nil {
 		return service.ErrNotConnected
 	}
@@ -351,7 +351,7 @@ func (f *franzKafkaWriter) WriteBatch(ctx context.Context, b service.MessageBatc
 	return
 }
 
-func (f *franzKafkaWriter) disconnect() {
+func (f *FranzKafkaWriter) disconnect() {
 	if f.client == nil {
 		return
 	}
@@ -359,7 +359,7 @@ func (f *franzKafkaWriter) disconnect() {
 	f.client = nil
 }
 
-func (f *franzKafkaWriter) Close(ctx context.Context) error {
+func (f *FranzKafkaWriter) Close(ctx context.Context) error {
 	f.disconnect()
 	return nil
 }

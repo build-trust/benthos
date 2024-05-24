@@ -553,16 +553,6 @@ type ParsedConfig struct {
 	mgr bundle.NewManagement
 }
 
-// Raw returns the raw parsed configuration as a structured value.
-func (p *ParsedConfig) Raw() any {
-	return p.i.Raw()
-}
-
-// Inner returns the underlying parsed config object
-func (p *ParsedConfig) Inner() *docs.ParsedConfig {
-	return p.i
-}
-
 // EngineVersion returns the version stamp associated with the underlying
 // benthos engine. The version string is not guaranteed to match any particular
 // scheme.
