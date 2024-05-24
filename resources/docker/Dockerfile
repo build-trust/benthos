@@ -27,6 +27,7 @@ COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /etc/passwd /etc/passwd
 COPY --from=build /go/src/github.com/benthosdev/benthos/target/bin/benthos .
 COPY ./config/docker.yaml /benthos.yaml
+COPY ./internal/impl/ockam/test/ockam /usr/local/bin/ockam
 
 USER benthos
 

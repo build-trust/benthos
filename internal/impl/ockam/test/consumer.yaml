@@ -1,6 +1,10 @@
+http:
+  address: 0.0.0.0:4196
+
 input:
   ockam_kafka_franz:
-    seed_brokers: [ redpanda:9092 ]
+    node_port: 4000
+    seed_brokers: [ localhost:9092 ]
     topics: [ topic_A ]
     consumer_group: example_group
 

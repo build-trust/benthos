@@ -2,6 +2,7 @@ input:
   stdin: {}
 
 output:
-  kafka_franz:
-    seed_brokers: [ redpanda:9092 ]
+  ockam_kafka_franz:
+    output_node_address: /ip4/127.0.0.1/tcp/4000/secure/api
+    seed_brokers: [ localhost:9092 ]
     topic: topic_A

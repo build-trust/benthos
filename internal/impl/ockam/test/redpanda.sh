@@ -12,4 +12,4 @@ docker run \
   --overprovisioned \
   --smp 1 \
   --memory 1G \
-  --advertise-kafka-addr redpanda:9092
+  --advertise-kafka-addr localhost:9092

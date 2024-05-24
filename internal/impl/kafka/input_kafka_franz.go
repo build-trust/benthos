@@ -19,7 +19,7 @@ import (
 	"github.com/benthosdev/benthos/v4/public/service"
 )
 
-func franzKafkaInputConfig() *service.ConfigSpec {
+func FranzKafkaInputConfig() *service.ConfigSpec {
 	return service.NewConfigSpec().
 		Beta().
 		Categories("Services").
@@ -108,7 +108,7 @@ root = if $has_topic_partitions {
 }
 
 func init() {
-	err := service.RegisterBatchInput("kafka_franz", franzKafkaInputConfig(),
+	err := service.RegisterBatchInput("kafka_franz", FranzKafkaInputConfig(),
 		func(conf *service.ParsedConfig, mgr *service.Resources) (service.BatchInput, error) {
 			rdr, err := NewFranzKafkaReaderFromConfig(conf, mgr)
 			if err != nil {

@@ -16,7 +16,7 @@ import (
 	"github.com/benthosdev/benthos/v4/public/service"
 )
 
-func franzKafkaOutputConfig() *service.ConfigSpec {
+func FranzKafkaOutputConfig() *service.ConfigSpec {
 	return service.NewConfigSpec().
 		Beta().
 		Categories("Services").
@@ -94,7 +94,7 @@ root = if this.partitioner == "manual" {
 }
 
 func init() {
-	err := service.RegisterBatchOutput("kafka_franz", franzKafkaOutputConfig(),
+	err := service.RegisterBatchOutput("kafka_franz", FranzKafkaOutputConfig(),
 		func(conf *service.ParsedConfig, mgr *service.Resources) (
 			output service.BatchOutput,
 			batchPolicy service.BatchPolicy,
