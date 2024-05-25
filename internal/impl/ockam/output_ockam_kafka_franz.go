@@ -2,13 +2,13 @@ package ockam
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"net"
 	"strconv"
 	"strings"
 
 	"github.com/benthosdev/benthos/v4/internal/impl/kafka"
-
 	"github.com/benthosdev/benthos/v4/public/service"
 )
 
@@ -21,8 +21,8 @@ This output often out-performs the traditional ` + "`kafka`" + ` output as well 
 `).
 		Field(service.NewStringField("node_name").Optional()).
 		Field(service.NewStringField("node_port").Optional()).
-		Field(service.NewStringField("inlet_address").Optional()).
-		Field(service.NewStringField("output_node_address"))
+		Field(service.NewStringField("broker_address").Default("localhost:9092")).
+		Field(service.NewStringField("input_node_address"))
 }
 
 func init() {
@@ -77,25 +77,22 @@ func newOckamKafkaFranzOutput(conf *service.ParsedConfig, log *service.Logger) (
 		_ = listener.Close()
 	}
 
-	// Use the first "seed_brokers" field item as the bootstrap server
+	// Use the first "seed_brokers" field item as the inlet address
 	seedBrokers, err := conf.FieldStringList("seed_brokers")
 	if err != nil {
 		return nil, err
 	}
-	bootstrapServer := strings.Split(seedBrokers[0], ",")[0]
+	if len(seedBrokers) > 1 {
+		return nil, errors.New("seed_brokers must contain only one broker")
+	}
+	kafkaInletAddress := strings.Split(seedBrokers[0], ",")[0]
 
-	kafkaInletAddress, err := conf.FieldString("inlet_address")
+	bootstrapServer, err := conf.FieldString("broker_address")
 	if err != nil {
-		listener, err := net.Listen("tcp", ":0")
-		if err != nil {
-			return nil, err
-		}
-		port := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
-		kafkaInletAddress = "0.0.0.0:" + port
-		_ = listener.Close()
+		return nil, err
 	}
 
-	kafkaOutputNodeAddress, err := conf.FieldString("output_node_address")
+	kafkaInputNodeAddress, err := conf.FieldString("input_node_address")
 	if err != nil {
 		return nil, err
 	}
@@ -106,19 +103,19 @@ func newOckamKafkaFranzOutput(conf *service.ParsedConfig, log *service.Logger) (
 	}
 
 	nodeConfig := "{" +
-		"ticket: \"/Users/adrian/projects/ockam/benthos/internal/impl/ockam/test/output.ticket\"," +
-		"name: " + nodeName + "," +
-		"tcp-listener-address: 0.0.0.0:" + nodePort + "," +
+		"ticket: \"/Users/adrian/projects/ockam/benthos/internal/impl/ockam/test/output.ticket\", " +
+		"name: " + nodeName + ", " +
+		"tcp-listener-address: 0.0.0.0:" + nodePort + ", " +
 		"kafka-inlet: [{" +
-		"from: " + kafkaInletAddress + "," +
-		"to: self," +
-		"consumer: " + kafkaOutputNodeAddress + "," +
-		"avoid-publishing: true}]," +
+		"from: " + kafkaInletAddress + ", " +
+		"to: /secure/api," +
+		"consumer: " + kafkaInputNodeAddress + ", " +
+		"avoid-publishing: true}], " +
 		"kafka-outlet: [{" +
-		"bootstrap-server: " + bootstrapServer + "," +
+		"bootstrap-server: " + bootstrapServer + ", " +
 		"tls: " + strconv.FormatBool(tls) + "}]" +
 		"}"
-	node := Node{Name: nodeName, Config: nodeConfig}
+	node := Node{Name: nodeName, Config: nodeConfig, Log: log}
 	err = node.Create()
 	if err != nil {
 		return nil, err
@@ -138,6 +135,8 @@ func (k *ockamFranzKafkaOutput) WriteBatch(ctx context.Context, batch service.Me
 }
 
 func (k *ockamFranzKafkaOutput) Close(ctx context.Context) error {
-	_ = k.node.Delete()
-	return k.FranzKafkaWriter.Close(ctx)
+	err1 := k.FranzKafkaWriter.Close(ctx)
+	err2 := k.node.Delete()
+	err := errors.Join(err1, err2)
+	return err
 }

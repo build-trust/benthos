@@ -7,7 +7,10 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
+
+	"github.com/benthosdev/benthos/v4/public/service"
 )
 
 func InstallCommand() error {
@@ -38,7 +41,7 @@ func InstallCommand() error {
 
 	// Run the install script.
 	cmd := exec.Command(tmpFile.Name())
-	return RunCommand(cmd)
+	return runCommand(cmd, nil)
 }
 
 func IsCommandInPath() bool {
@@ -46,7 +49,49 @@ func IsCommandInPath() bool {
 	return err == nil
 }
 
-func RunCommand(cmd *exec.Cmd) error {
+type Node struct {
+	Name   string
+	Config string
+	Log    *service.Logger
+}
+
+func (n *Node) Create() error {
+	if n.IsRunning() {
+		_ = n.Delete()
+	}
+
+	cmd := exec.Command("ockam", "node", "create", "--node-config", n.Config)
+	n.Log.Debugf("Creating Ockam Node: %s with config %v", n.Name, n.Config)
+	return runCommand(cmd, n.Log)
+}
+
+func (n *Node) Delete() error {
+	cmd := exec.Command("ockam", "node", "delete", n.Name, "--yes")
+	return runCommand(cmd, n.Log)
+}
+
+func (n *Node) IsRunning() bool {
+	cmd := exec.Command("ockam", "node", "show", n.Name, "--output", "json")
+	output, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+
+	var result map[string]interface{}
+	err = json.Unmarshal(output, &result)
+	if err != nil {
+		return false
+	}
+
+	status, ok := result["status"].(string)
+	if !ok {
+		return false
+	}
+
+	return strings.ToLower(status) == "up"
+}
+
+func runCommand(cmd *exec.Cmd, log *service.Logger) error {
 	stdout, err := os.CreateTemp("", "stdout-*.log")
 	if err != nil {
 		return fmt.Errorf("failed to create a temporary file to store the command's stdout: %v", err)
@@ -68,46 +113,13 @@ func RunCommand(cmd *exec.Cmd) error {
 		"OCKAM_OPENTELEMETRY_EXPORT=false",
 	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if log != nil {
+		log.Infof("Running command: %s", cmd.String())
+	}
 	err = cmd.Run()
 	if err != nil {
 		return fmt.Errorf("failed to run the command: %s, error: %v", cmd.String(), err)
 	}
 
 	return nil
-}
-
-type Node struct {
-	Name   string
-	Config string
-}
-
-func (n *Node) Create() error {
-	cmd := exec.Command("ockam", "node", "create", "--node-config", n.Config)
-	return RunCommand(cmd)
-}
-
-func (n *Node) Delete() error {
-	cmd := exec.Command("ockam", "node", "delete", n.Name, "--yes")
-	return RunCommand(cmd)
-}
-
-func (n *Node) IsRunning() bool {
-	cmd := exec.Command("ockam", "node", "show", n.Name, "--output", "json")
-	output, err := cmd.Output()
-	if err != nil {
-		return false
-	}
-
-	var result map[string]interface{}
-	err = json.Unmarshal(output, &result)
-	if err != nil {
-		return false
-	}
-
-	status, ok := result["status"].(string)
-	if !ok {
-		return false
-	}
-
-	return status == "Up"
 }

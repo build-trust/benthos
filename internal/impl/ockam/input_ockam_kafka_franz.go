@@ -2,6 +2,7 @@ package ockam
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"net"
 	"strconv"
@@ -16,7 +17,7 @@ func ockamFranzKafkaInputConfig() *service.ConfigSpec {
 		Summary(`An Ockam wrapper around Kafka input using the [Franz Kafka client library](https://github.com/twmb/franz-go).`).
 		Field(service.NewStringField("node_name").Optional()).
 		Field(service.NewStringField("node_port").Optional()).
-		Field(service.NewStringField("inlet_address").Optional())
+		Field(service.NewStringField("broker_address").Default("localhost:9092"))
 }
 
 func init() {
@@ -65,22 +66,19 @@ func newOckamKafkaFranzInput(conf *service.ParsedConfig, mgr *service.Resources)
 		_ = listener.Close()
 	}
 
-	// Use the first "seed_brokers" field item as the bootstrap server
+	// Use the first "seed_brokers" field item as the inlet address
 	seedBrokers, err := conf.FieldStringList("seed_brokers")
 	if err != nil {
 		return nil, err
 	}
-	bootstrapServer := strings.Split(seedBrokers[0], ",")[0]
+	if len(seedBrokers) > 1 {
+		return nil, errors.New("seed_brokers must contain only one broker")
+	}
+	kafkaInletAddress := strings.Split(seedBrokers[0], ",")[0]
 
-	kafkaInletAddress, err := conf.FieldString("inlet_address")
+	bootstrapServer, err := conf.FieldString("broker_address")
 	if err != nil {
-		listener, err := net.Listen("tcp", ":0")
-		if err != nil {
-			return nil, err
-		}
-		port := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
-		kafkaInletAddress = "0.0.0.0:" + port
-		_ = listener.Close()
+		return nil, err
 	}
 
 	_, tls, err := conf.FieldTLSToggled("tls")
@@ -89,18 +87,18 @@ func newOckamKafkaFranzInput(conf *service.ParsedConfig, mgr *service.Resources)
 	}
 
 	nodeConfig := "{" +
-		"ticket: \"/Users/adrian/projects/ockam/benthos/internal/impl/ockam/test/input.ticket\"," +
-		"name: " + nodeName + "," +
-		"tcp-listener-address: 0.0.0.0:" + nodePort + "," +
+		"ticket: \"/Users/adrian/projects/ockam/benthos/internal/impl/ockam/test/input.ticket\", " +
+		"name: " + nodeName + ", " +
+		"tcp-listener-address: 0.0.0.0:" + nodePort + ", " +
 		"kafka-inlet: [{" +
-		"from: " + kafkaInletAddress + "," +
-		"to: self," +
-		"avoid-publishing: true}]," +
+		"from: " + kafkaInletAddress + ", " +
+		"to: /secure/api, " +
+		"avoid-publishing: true}], " +
 		"kafka-outlet: [{" +
-		"bootstrap-server: " + bootstrapServer + "," +
+		"bootstrap-server: " + bootstrapServer + ", " +
 		"tls: " + strconv.FormatBool(tls) + "}]" +
 		"}"
-	node := Node{Name: nodeName, Config: nodeConfig}
+	node := Node{Name: nodeName, Config: nodeConfig, Log: mgr.Logger()}
 	err = node.Create()
 	if err != nil {
 		return nil, err
@@ -125,6 +123,7 @@ func (k *ockamFranzKafkaInput) ReadBatch(ctx context.Context) (service.MessageBa
 }
 
 func (k *ockamFranzKafkaInput) Close(ctx context.Context) error {
-	_ = k.node.Delete()
-	return k.FranzKafkaReader.Close(ctx)
+	err1 := k.FranzKafkaReader.Close(ctx)
+	err2 := k.node.Delete()
+	return errors.Join(err1, err2)
 }

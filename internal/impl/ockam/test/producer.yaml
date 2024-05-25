@@ -1,8 +1,13 @@
 input:
   stdin: {}
 
+#output:
+#  kafka_franz:
+#    seed_brokers: [ localhost:9092 ]
+#    topic: topic_A
+
 output:
   ockam_kafka_franz:
-    output_node_address: /ip4/127.0.0.1/tcp/4000/secure/api
-    seed_brokers: [ localhost:9092 ]
+    input_node_address: /dnsaddr/localhost/tcp/4000
+    seed_brokers: [ localhost:29092 ]
     topic: topic_A
