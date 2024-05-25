@@ -90,18 +90,18 @@ func newOckamKafkaOutput(conf *service.ParsedConfig, log *service.Logger) (*ocka
 
 	nodeConfig := `
 		{
-			"ticket": ` + ticket + `,
+			"ticket": "` + ticket + `",
 
-			"kafka-inlets": [{
-				"from": ` + kafkaInletAddress + `,
-				"to": /secure/api,
-				"consumer": ` + routeToConsumer + `,
-				"avoid-publishing": true,
-			}]
+			"kafka-inlet": [{
+				"from": "` + kafkaInletAddress + `",
+				"to": "/secure/api",
+				"consumer": "` + routeToConsumer + `",
+				"avoid-publishing": true
+			}],
 
-			"kafka-outlets": [{
+			"kafka-outlet": [{
 				"bootstrap-server": "` + bootstrapServer + `",
-				"tls": "` + strconv.FormatBool(tls) + `",
+				"tls": ` + strconv.FormatBool(tls) + `
 			}]
 		}
 	`

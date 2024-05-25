@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -70,5 +71,5 @@ func (n *Node) IsRunning() bool {
 		return false
 	}
 
-	return status == "Up"
+	return strings.ToLower(status) == "up"
 }

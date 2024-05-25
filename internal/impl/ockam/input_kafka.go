@@ -14,7 +14,8 @@ import (
 func ockamKafkaInputConfig() *service.ConfigSpec {
 	return kafka.FranzKafkaInputConfig().
 		Summary(`Ockam`).
-		Field(service.NewStringField("ockam_ticket"))
+		Field(service.NewStringField("ockam_ticket")).
+		Field(service.NewStringField("ockam_consumer_port").Optional())
 }
 
 // this function is, almost, an exact copy of the init() function in ../kafka/input_kafka_franz.go
@@ -55,6 +56,17 @@ func newOckamKafkaInput(conf *service.ParsedConfig, mgr *service.Resources) (*oc
 		return nil, err
 	}
 
+	nodePort, err := conf.FieldString("ockam_consumer_port")
+	if err != nil {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return nil, err
+		}
+		nodePort = strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
+		_ = listener.Close()
+	}
+	mgr.Logger().Infof("The Ockam consumer is listening on port %v", nodePort)
+
 	// Find a free port to use for the kafka-inlet
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -76,17 +88,18 @@ func newOckamKafkaInput(conf *service.ParsedConfig, mgr *service.Resources) (*oc
 
 	nodeConfig := `
 		{
-			"ticket": ` + ticket + `,
+			"ticket": "` + ticket + `",
+			"tcp-listener-address": "0.0.0.0:` + nodePort + `",
 
-			"kafka-inlets": [{
-				"from": ` + kafkaInletAddress + `,
-				"to": /secure/api,
-				"avoid-publishing": true,
-			}]
+			"kafka-inlet": [{
+				"from": "` + kafkaInletAddress + `",
+				"to": "/secure/api",
+				"avoid-publishing": true
+			}],
 
-			"kafka-outlets": [{
+			"kafka-outlet": [{
 				"bootstrap-server": "` + bootstrapServer + `",
-				"tls": "` + strconv.FormatBool(tls) + `",
+				"tls": ` + strconv.FormatBool(tls) + `
 			}]
 		}
 	`
