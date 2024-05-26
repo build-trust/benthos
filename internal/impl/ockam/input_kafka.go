@@ -2,8 +2,7 @@ package ockam
 
 import (
 	"context"
-	"net"
-	"strconv"
+	"encoding/json"
 	"strings"
 
 	"github.com/benthosdev/benthos/v4/internal/impl/kafka"
@@ -15,7 +14,7 @@ func ockamKafkaInputConfig() *service.ConfigSpec {
 		Summary(`Ockam`).
 		Field(service.NewStringField("consumer_identifier").Optional()).
 		Field(service.NewStringField("producer_identifier").Optional()).
-		Field(service.NewStringField("ockam_node_address").Optional())
+		Field(service.NewStringField("ockam_node_address").Optional().Default("127.0.0.1:4000"))
 }
 
 // this function is, almost, an exact copy of the init() function in ../kafka/input_kafka_franz.go
@@ -69,36 +68,31 @@ func newOckamKafkaInput(conf *service.ParsedConfig, mgr *service.Resources) (*oc
 
 	nodeAddress, err := conf.FieldString("ockam_node_address")
 	if err != nil {
-		// Check if the default port 4000 is already in use.
-		// If it is, use a random port.
-		nodeAddress = "0.0.0.0:4000"
-		listener, err := net.Listen("tcp", nodeAddress)
-		_ = listener.Close()
+		return nil, err
+	}
+	reuseNode := LocalAddressIsTaken(nodeAddress)
+	mgr.Logger().Infof("The Ockam consumer is listening at %v", nodeAddress)
+
+	var nodeName string
+	var kafkaInletAddress string
+	if reuseNode {
+		mgr.Logger().Infof("Found existing node running at %v", nodeAddress)
+
+		// If the node is already running, point to its kafka inlet address
+		name, address, err := GetKafkaInletAddressFrom(nodeAddress)
 		if err != nil {
-			listener, err := net.Listen("tcp", "0.0.0.0:0")
-			if err != nil {
-				return nil, err
-			}
-			nodeAddress = listener.Addr().String()
+			return nil, err
 		}
+		nodeName = *name
+		kafkaInletAddress = *address
+		mgr.Logger().Infof("Reusing the existing Ockam node %v", nodeName)
 	} else {
-		// Check if the specified address is already in use.
-		listener, err := net.Listen("tcp", nodeAddress)
-		_ = listener.Close()
+		// Otherwise, find a free port to use for the kafka-inlet
+		kafkaInletAddress, err = GetFreeLocalAddress()
 		if err != nil {
 			return nil, err
 		}
 	}
-	mgr.Logger().Infof("The Ockam consumer is listening at %v", nodeAddress)
-
-	// Find a free port to use for the kafka-inlet
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return nil, err
-	}
-	kafkaInletPort := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
-	kafkaInletAddress := "127.0.0.1:" + kafkaInletPort
-	_ = listener.Close()
 
 	// Override SeedBrokers list that would be used by kafka_franz to be the kafka inlet address
 	kafkaReader.SeedBrokers = []string{kafkaInletAddress}
@@ -124,9 +118,15 @@ func newOckamKafkaInput(conf *service.ParsedConfig, mgr *service.Resources) (*oc
 			"tls":              tls,
 			"allow":            "(= subject.identifier \"" + consumerIdentifier + "\")"}}
 
-	node, err := NewNode(nodeConfig, mgr.Logger())
-	if err != nil {
-		return nil, err
+	var node *Node
+	if reuseNode {
+		config, _ := json.Marshal(nodeConfig)
+		node = &Node{GetOckamBin(), nodeName, string(config)}
+	} else {
+		node, err = NewNode(nodeConfig, mgr.Logger())
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &ockamKafkaInput{kafkaReader, *node}, nil

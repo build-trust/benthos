@@ -2,8 +2,6 @@ package ockam
 
 import (
 	"context"
-	"net"
-	"strconv"
 	"strings"
 
 	"github.com/benthosdev/benthos/v4/internal/impl/kafka"
@@ -15,7 +13,7 @@ func ockamKafkaOutputConfig() *service.ConfigSpec {
 		Summary("Ockam").
 		Field(service.NewStringField("consumer_identifier").Optional()).
 		Field(service.NewStringField("producer_identifier").Optional()).
-		Field(service.NewStringField("ockam_route_to_consumer").Optional())
+		Field(service.NewStringField("ockam_route_to_consumer").Optional().Default("/ip4/127.0.0.1/tcp/4000"))
 }
 
 // this function is, almost, an exact copy of the init() function in ../kafka/output_kafka_franz.go
@@ -77,17 +75,14 @@ func newOckamKafkaOutput(conf *service.ParsedConfig, log *service.Logger) (*ocka
 
 	routeToConsumer, err := conf.FieldString("ockam_route_to_consumer")
 	if err != nil {
-		routeToConsumer = "/dnsaddr/localhost/tcp/4000"
+		return nil, err
 	}
 
 	// Find a free port to use for the kafka-inlet
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	kafkaInletAddress, err := GetFreeLocalAddress()
 	if err != nil {
 		return nil, err
 	}
-	kafkaInletPort := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
-	kafkaInletAddress := "127.0.0.1:" + kafkaInletPort
-	_ = listener.Close()
 
 	// Override seed_brokers conf that would be used by kafka_franz to be the kafka inlet address
 	kafkaWriter.SeedBrokers = []string{kafkaInletAddress}

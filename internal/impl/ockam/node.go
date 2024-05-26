@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
@@ -111,4 +112,108 @@ func GetOrCreateIdentifier(name string) (string, error) {
 	} else {
 		return strings.TrimSpace(string(output)), nil
 	}
+}
+
+func GetKafkaInletAddressFrom(nodeAddress string) (*string, *string, error) {
+	cmd := exec.Command(GetOckamBin(), "node", "list", "--output", "json")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, nil, err
+	}
+	var nodes []map[string]interface{}
+	err = json.Unmarshal(output, &nodes)
+	if err != nil {
+		return nil, nil, err
+	}
+	var nodeNames []string
+	for _, node := range nodes {
+		status, ok := node["status"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		if status["status"] == "running" {
+			nodeName, ok := node["node_name"].(string)
+			if !ok {
+				continue
+			}
+			nodeNames = append(nodeNames, nodeName)
+		}
+	}
+
+	for _, nodeName := range nodeNames {
+		cmd := exec.Command(GetOckamBin(), "node", "show", nodeName, "--output", "json")
+		output, err := cmd.Output()
+		if err != nil {
+			continue
+		}
+
+		var data map[string]interface{}
+		err = json.Unmarshal(output, &data)
+		if err != nil {
+			continue
+		}
+
+		transports, ok := data["transports"].([]interface{})
+		if !ok {
+			continue
+		}
+
+		nodeFound := false
+		for _, transport := range transports {
+			transportMap, ok := transport.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			socketAddress, ok := transportMap["socket_addr"].(string)
+			if !ok {
+				continue
+			}
+
+			if socketAddress == nodeAddress {
+				nodeFound = true
+				break
+			}
+		}
+		if !nodeFound {
+			continue
+		}
+
+		inlets, ok := data["inlets"].([]interface{})
+		if !ok {
+			continue
+		}
+
+		for _, inlet := range inlets {
+			inletMap, ok := inlet.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			outletRoute, ok := inletMap["outlet_route"].(string)
+			if !ok {
+				continue
+			}
+
+			if strings.Contains(outletRoute, "0#kafka_inlet") {
+				bindAddr, ok := inletMap["bind_addr"].(string)
+				if !ok {
+					continue
+				}
+				return &nodeName, &bindAddr, nil
+			}
+		}
+	}
+	return nil, nil, fmt.Errorf("no kafka inlet found")
+}
+
+func LocalAddressIsTaken(address string) bool {
+	_, err := net.Listen("tcp", address)
+	return err != nil
+}
+
+func GetFreeLocalAddress() (string, error) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	return listener.Addr().String(), err
 }
