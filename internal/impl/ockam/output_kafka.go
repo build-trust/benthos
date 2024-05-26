@@ -14,7 +14,9 @@ import (
 func ockamKafkaOutputConfig() *service.ConfigSpec {
 	return kafka.FranzKafkaOutputConfig().
 		Summary("Ockam").
-		Field(service.NewStringField("ockam_ticket")).
+		Field(service.NewStringField("ockam_binary_path").Optional()).
+		Field(service.NewStringField("consumer_identifier")).
+		Field(service.NewStringField("producer_identifier")).
 		Field(service.NewStringField("ockam_route_to_consumer"))
 }
 
@@ -59,11 +61,6 @@ func newOckamKafkaOutput(conf *service.ParsedConfig, log *service.Logger) (*ocka
 		tls = false
 	}
 
-	ticket, err := conf.FieldString("ockam_ticket")
-	if err != nil {
-		return nil, err
-	}
-
 	routeToConsumer, err := conf.FieldString("ockam_route_to_consumer")
 	if err != nil {
 		return nil, err
@@ -88,24 +85,33 @@ func newOckamKafkaOutput(conf *service.ParsedConfig, log *service.Logger) (*ocka
 	}
 	bootstrapServer := strings.Split(seedBrokers[0], ",")[0]
 
-	nodeConfig := `
-		{
-			"ticket": "` + ticket + `",
+	ockam_binary, err := conf.FieldString("ockam_binary_path")
+	if err != nil {
+		ockam_binary = "ockam"
+	}
+	consumer_identifier, err := conf.FieldString("consumer_identifier")
+	if err != nil {
+		return nil, err
+	}
+	producer_identifier, err := conf.FieldString("producer_identifier")
+	if err != nil {
+		return nil, err
+	}
 
-			"kafka-inlet": [{
-				"from": "` + kafkaInletAddress + `",
-				"to": "/secure/api",
-				"consumer": "` + routeToConsumer + `",
-				"avoid-publishing": true
-			}],
-
-			"kafka-outlet": [{
-				"bootstrap-server": "` + bootstrapServer + `",
-				"tls": ` + strconv.FormatBool(tls) + `
-			}]
-		}
-	`
-	node, err := NewNode(nodeConfig)
+	nodeConfig := map[string]interface{}{
+		"identity" : "producer",
+		"kafka-inlet": map[string]interface{}{
+			"from": kafkaInletAddress,
+			"to": "/secure/api",
+			"avoid-publishing": true,
+			"consumer": routeToConsumer,
+			"allow-consumer": "(= subject.identifier \"" + consumer_identifier + "\")",
+			"allow": "(= subject.identifier \"" + producer_identifier + "\")"},
+		"kafka-outlet": map[string]interface{}{
+			"bootstrap-server" : bootstrapServer,
+			"tls" : tls,
+			"allow": "(= subject.identifier \"" + producer_identifier + "\")"}}
+	node, err := NewNode(ockam_binary, nodeConfig, log)
 	if err != nil {
 		return nil, err
 	}

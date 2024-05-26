@@ -6,7 +6,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
-
+	
 	"github.com/benthosdev/benthos/v4/internal/impl/kafka"
 	"github.com/benthosdev/benthos/v4/public/service"
 )
@@ -14,7 +14,10 @@ import (
 func ockamKafkaInputConfig() *service.ConfigSpec {
 	return kafka.FranzKafkaInputConfig().
 		Summary(`Ockam`).
-		Field(service.NewStringField("ockam_ticket")).
+		//Field(service.NewStringField("ockam_ticket")).
+		Field(service.NewStringField("ockam_binary_path").Optional()).
+		Field(service.NewStringField("consumer_identifier")).
+		Field(service.NewStringField("producer_identifier")).
 		Field(service.NewStringField("ockam_node_address").Optional())
 }
 
@@ -50,20 +53,22 @@ func newOckamKafkaInput(conf *service.ParsedConfig, mgr *service.Resources) (*oc
 	if err != nil {
 		tls = false
 	}
-
-	ticket, err := conf.FieldString("ockam_ticket")
+	ockam_binary, err := conf.FieldString("ockam_binary_path")
+	if err != nil {
+		ockam_binary = "ockam"
+	}
+	consumer_identifier, err := conf.FieldString("consumer_identifier")
+	if err != nil {
+		return nil, err
+	}
+	producer_identifier, err := conf.FieldString("producer_identifier")
 	if err != nil {
 		return nil, err
 	}
 
 	nodePort, err := conf.FieldString("ockam_node_address")
 	if err != nil {
-		listener, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			return nil, err
-		}
-		nodePort = strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
-		_ = listener.Close()
+		nodePort = "0.0.0.0:4000"
 	}
 	mgr.Logger().Infof("The Ockam consumer is listening on port %v", nodePort)
 
@@ -86,24 +91,21 @@ func newOckamKafkaInput(conf *service.ParsedConfig, mgr *service.Resources) (*oc
 	}
 	bootstrapServer := strings.Split(seedBrokers[0], ",")[0]
 
-	nodeConfig := `
-		{
-			"ticket": "` + ticket + `",
-			"tcp-listener-address": "0.0.0.0:` + nodePort + `",
+	nodeConfig := map[string]interface{}{
+		"identity" : "consumer",
+		"tcp-listener-address": nodePort,
+		"kafka-inlet": map[string]interface{}{
+			"from": kafkaInletAddress,
+			"to": "/secure/api",
+			"avoid-publishing": true,
+			"allow-producer": "(= subject.identifier \"" + producer_identifier + "\")",
+			"allow": "(= subject.identifier \"" + consumer_identifier + "\")"},
+		"kafka-outlet": map[string]interface{}{
+			"bootstrap-server" : bootstrapServer,
+			"tls" : tls,
+			"allow": "(= subject.identifier \"" + consumer_identifier + "\")"}}
 
-			"kafka-inlet": [{
-				"from": "` + kafkaInletAddress + `",
-				"to": "/secure/api",
-				"avoid-publishing": true
-			}],
-
-			"kafka-outlet": [{
-				"bootstrap-server": "` + bootstrapServer + `",
-				"tls": ` + strconv.FormatBool(tls) + `
-			}]
-		}
-	`
-	node, err := NewNode(nodeConfig)
+	node, err := NewNode(ockam_binary, nodeConfig, mgr.Logger())
 	if err != nil {
 		return nil, err
 	}
