@@ -14,8 +14,8 @@ import (
 func ockamKafkaInputConfig() *service.ConfigSpec {
 	return kafka.FranzKafkaInputConfig().
 		Summary(`Ockam`).
-		Field(service.NewStringField("consumer_identifier")).
-		Field(service.NewStringField("producer_identifier")).
+		Field(service.NewStringField("consumer_identifier").Optional()).
+		Field(service.NewStringField("producer_identifier").Optional()).
 		Field(service.NewStringField("ockam_node_address").Optional())
 }
 
@@ -47,19 +47,25 @@ func newOckamKafkaInput(conf *service.ParsedConfig, mgr *service.Resources) (*oc
 		return nil, err
 	}
 
-	_, tls, err := conf.FieldTLSToggled("tls")
-	if err != nil {
-		tls = false
-	}
-
 	consumerIdentifier, err := conf.FieldString("consumer_identifier")
 	if err != nil {
-		return nil, err
+		consumerIdentifier, err = GetOrCreateIdentity("consumer")
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	producerIdentifier, err := conf.FieldString("producer_identifier")
 	if err != nil {
-		return nil, err
+		producerIdentifier, err = GetOrCreateIdentity("producer")
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	_, tls, err := conf.FieldTLSToggled("tls")
+	if err != nil {
+		tls = false
 	}
 
 	nodeAddress, err := conf.FieldString("ockam_node_address")

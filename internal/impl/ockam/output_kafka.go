@@ -14,8 +14,8 @@ import (
 func ockamKafkaOutputConfig() *service.ConfigSpec {
 	return kafka.FranzKafkaOutputConfig().
 		Summary("Ockam").
-		Field(service.NewStringField("consumer_identifier")).
-		Field(service.NewStringField("producer_identifier")).
+		Field(service.NewStringField("consumer_identifier").Optional()).
+		Field(service.NewStringField("producer_identifier").Optional()).
 		Field(service.NewStringField("ockam_route_to_consumer").Optional())
 }
 
@@ -55,6 +55,22 @@ func newOckamKafkaOutput(conf *service.ParsedConfig, log *service.Logger) (*ocka
 		return nil, err
 	}
 
+	consumerIdentifier, err := conf.FieldString("consumer_identifier")
+	if err != nil {
+		consumerIdentifier, err = GetOrCreateIdentity("consumer")
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	producerIdentifier, err := conf.FieldString("producer_identifier")
+	if err != nil {
+		producerIdentifier, err = GetOrCreateIdentity("producer")
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	_, tls, err := conf.FieldTLSToggled("tls")
 	if err != nil {
 		tls = false
@@ -83,16 +99,6 @@ func newOckamKafkaOutput(conf *service.ParsedConfig, log *service.Logger) (*ocka
 		return nil, err
 	}
 	bootstrapServer := strings.Split(seedBrokers[0], ",")[0]
-
-	consumerIdentifier, err := conf.FieldString("consumer_identifier")
-	if err != nil {
-		return nil, err
-	}
-
-	producerIdentifier, err := conf.FieldString("producer_identifier")
-	if err != nil {
-		return nil, err
-	}
 
 	nodeConfig := map[string]interface{}{
 		"identity": "producer",

@@ -11,6 +11,14 @@ import (
 	"syscall"
 )
 
+func GetOckamBin() string {
+	ockamBin := os.Getenv("OCKAM")
+	if ockamBin == "" {
+		ockamBin = "ockam"
+	}
+	return ockamBin
+}
+
 func InstallCommand() error {
 	// Download the install script.
 	resp, err := http.Get("https://install.command.ockam.io")
