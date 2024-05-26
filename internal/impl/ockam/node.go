@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -15,25 +17,27 @@ import (
 	"github.com/benthosdev/benthos/v4/public/service"
 )
 
-
-
 type Node struct {
 	OckamBin string
-	Name   string
-	Config string
+	Name     string
+	Config   string
 }
 
-func NewNode(ockam_bin string, cfg map[string]interface{}, log *service.Logger) (*Node, error) {
+func NewNode(cfg map[string]interface{}, log *service.Logger) (*Node, error) {
+	ockamBin := os.Getenv("OCKAM")
+	if ockamBin == "" {
+		ockamBin = "ockam"
+	}
 
 	name := "benthos-" + generateName()
 	cfg["name"] = name
 
 	updatedConfig, err := json.Marshal(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal updated config to json string: %v", err)
+		return nil, fmt.Errorf("failed to marshal updated node config to json string: %v", err)
 	}
 
-	node := &Node{OckamBin: ockam_bin, Name: name, Config: string(updatedConfig)}
+	node := &Node{OckamBin: ockamBin, Name: name, Config: string(updatedConfig)}
 
 	err = node.Create(log)
 	if err != nil {
@@ -49,63 +53,69 @@ func generateName() string {
 	return fmt.Sprintf("%08x", randomNumber)
 }
 
-/*
-func (n *Node) Create() error {
-	return RunCommand("ockam", "node", "create", "--node-config", n.Config)
-}
-*/
 func (n *Node) Create(log *service.Logger) error {
-	//return RunCommand("ockam", "node", "create", "--node-config", n.Config)
+	ctx, cancel := context.WithCancel(context.Background())
 
-	ctx, _ := context.WithCancel(context.Background())
-
-	// Run ockam in foreground, piping its log into benthos.  Ockam process exit whenever benthos exit.
-	// TODO: LOG_LEVEL should be set at the value set on benthos, otherwise we are wasting cpu logging at
-	// debug level just to be discarded latter.
-	fmt.Printf("Command: %s : %s", n.OckamBin, n.Config)
-	cmd := exec.CommandContext(ctx, n.OckamBin, "node", "create", "-f", "--node-config", n.Config )
-	cmd.Env = []string{"OCKAM_LOGGING=true", "OCKAM_LOG_LEVEL=debug", "CONSUMER_IDENTIFIER=11", "PRODUCER_IDENTIFIER=11"}
+	// Run ockam in foreground, piping its log into benthos. Ockam process exit whenever benthos exit.
+	// TODO: LOG_LEVEL should be set at the value set on benthos (info by default)
+	cmd := exec.CommandContext(ctx, n.OckamBin, "node", "create", "-f", "--node-config", n.Config)
+	log.Infof("Creating node with command: %v", cmd.String())
+	cmd.Env = append(os.Environ(),
+		"NO_INPUT=true",
+		"NO_COLOR=true",
+		"OCKAM_DISABLE_UPGRADE_CHECK=true",
+		"OCKAM_OPENTELEMETRY_EXPORT=false",
+		"OCKAM_LOGGING=true",
+		"OCKAM_LOG_LEVEL=info",
+	)
 	stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			return err
-		}
+	if err != nil {
+		cancel()
+		return err
+	}
 	scanner := bufio.NewScanner(stdout)
 	splitter := regexp.MustCompile(`\s+`)
 	go func() {
 		// Just pipe the logs from ockam into benthos
 		for scanner.Scan() {
 			// timestamp level line
-			log_fields := splitter.Split(scanner.Text(), 3)
-			if len(log_fields) == 3 {
-				switch log_fields[1] {
+			logFields := splitter.Split(scanner.Text(), 3)
+			if len(logFields) == 3 {
+				switch logFields[1] {
 				case "DEBUG":
-					log.Debugf(log_fields[2])
+					log.Debugf(logFields[2])
 				case "INFO":
-					log.Infof(log_fields[2])
+					log.Infof(logFields[2])
 				case "WARN":
-					log.Warnf(log_fields[2])
+					log.Warnf(logFields[2])
 				case "ERROR":
-					log.Errorf(log_fields[2])
+					log.Errorf(logFields[2])
 				}
 			}
 		}
 		if scanner.Err() != nil {
-			cmd.Process.Kill()
-			cmd.Wait()
 			log.Errorf("%v", scanner.Err())
-			return
+			err = errors.Join(cmd.Process.Kill(), cmd.Wait())
+			if err != nil {
+				log.Errorf("%v", err)
+			}
+		} else {
+			err = cmd.Wait()
+			if err != nil {
+				log.Errorf("%v", err)
+			}
 		}
-		cmd.Wait()
+		cancel()
 	}()
 	return cmd.Start()
 }
 
 func (n *Node) Delete() error {
-	return RunCommand("ockam", "node", "delete", n.Name, "--yes")
+	return RunCommand(n.OckamBin, "node", "delete", n.Name, "--yes")
 }
 
 func (n *Node) IsRunning() bool {
-	cmd := exec.Command("ockam", "node", "show", n.Name, "--output", "json")
+	cmd := exec.Command(n.OckamBin, "node", "show", n.Name, "--output", "json")
 	output, err := cmd.Output()
 	if err != nil {
 		return false

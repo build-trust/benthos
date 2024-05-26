@@ -6,7 +6,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	
+
 	"github.com/benthosdev/benthos/v4/internal/impl/kafka"
 	"github.com/benthosdev/benthos/v4/public/service"
 )
@@ -14,8 +14,6 @@ import (
 func ockamKafkaInputConfig() *service.ConfigSpec {
 	return kafka.FranzKafkaInputConfig().
 		Summary(`Ockam`).
-		//Field(service.NewStringField("ockam_ticket")).
-		Field(service.NewStringField("ockam_binary_path").Optional()).
 		Field(service.NewStringField("consumer_identifier")).
 		Field(service.NewStringField("producer_identifier")).
 		Field(service.NewStringField("ockam_node_address").Optional())
@@ -53,24 +51,40 @@ func newOckamKafkaInput(conf *service.ParsedConfig, mgr *service.Resources) (*oc
 	if err != nil {
 		tls = false
 	}
-	ockam_binary, err := conf.FieldString("ockam_binary_path")
-	if err != nil {
-		ockam_binary = "ockam"
-	}
-	consumer_identifier, err := conf.FieldString("consumer_identifier")
-	if err != nil {
-		return nil, err
-	}
-	producer_identifier, err := conf.FieldString("producer_identifier")
+
+	consumerIdentifier, err := conf.FieldString("consumer_identifier")
 	if err != nil {
 		return nil, err
 	}
 
-	nodePort, err := conf.FieldString("ockam_node_address")
+	producerIdentifier, err := conf.FieldString("producer_identifier")
 	if err != nil {
-		nodePort = "0.0.0.0:4000"
+		return nil, err
 	}
-	mgr.Logger().Infof("The Ockam consumer is listening on port %v", nodePort)
+
+	nodeAddress, err := conf.FieldString("ockam_node_address")
+	if err != nil {
+		// Check if the default port 4000 is already in use.
+		// If it is, use a random port.
+		nodeAddress = "0.0.0.0:4000"
+		listener, err := net.Listen("tcp", nodeAddress)
+		_ = listener.Close()
+		if err != nil {
+			listener, err := net.Listen("tcp", "0.0.0.0:0")
+			if err != nil {
+				return nil, err
+			}
+			nodeAddress = listener.Addr().String()
+		}
+	} else {
+		// Check if the specified address is already in use.
+		listener, err := net.Listen("tcp", nodeAddress)
+		_ = listener.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+	mgr.Logger().Infof("The Ockam consumer is listening at %v", nodeAddress)
 
 	// Find a free port to use for the kafka-inlet
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -92,20 +106,20 @@ func newOckamKafkaInput(conf *service.ParsedConfig, mgr *service.Resources) (*oc
 	bootstrapServer := strings.Split(seedBrokers[0], ",")[0]
 
 	nodeConfig := map[string]interface{}{
-		"identity" : "consumer",
-		"tcp-listener-address": nodePort,
+		"identity":             "consumer",
+		"tcp-listener-address": nodeAddress,
 		"kafka-inlet": map[string]interface{}{
-			"from": kafkaInletAddress,
-			"to": "/secure/api",
+			"from":             kafkaInletAddress,
+			"to":               "/secure/api",
 			"avoid-publishing": true,
-			"allow-producer": "(= subject.identifier \"" + producer_identifier + "\")",
-			"allow": "(= subject.identifier \"" + consumer_identifier + "\")"},
+			"allow-producer":   "(= subject.identifier \"" + producerIdentifier + "\")",
+			"allow":            "(= subject.identifier \"" + consumerIdentifier + "\")"},
 		"kafka-outlet": map[string]interface{}{
-			"bootstrap-server" : bootstrapServer,
-			"tls" : tls,
-			"allow": "(= subject.identifier \"" + consumer_identifier + "\")"}}
+			"bootstrap-server": bootstrapServer,
+			"tls":              tls,
+			"allow":            "(= subject.identifier \"" + consumerIdentifier + "\")"}}
 
-	node, err := NewNode(ockam_binary, nodeConfig, mgr.Logger())
+	node, err := NewNode(nodeConfig, mgr.Logger())
 	if err != nil {
 		return nil, err
 	}

@@ -54,20 +54,6 @@ func RunCommand(name string, arg ...string) error {
 
 	cmd := exec.Command("sh", "-c", "source ~/.ockam/env && "+name+" "+strings.Join(quotedArgs, " "))
 
-	stdout, err := os.CreateTemp("", "stdout-*.log")
-	if err != nil {
-		return fmt.Errorf("failed to create a temporary file to store the command's stdout: %v", err)
-	}
-	defer stdout.Close()
-
-	stderr, err := os.CreateTemp("", "stderr-*.log")
-	if err != nil {
-		return fmt.Errorf("failed to create a temporary file to store the command's stderr: %v", err)
-	}
-	defer stderr.Close()
-
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
 	cmd.Env = append(os.Environ(),
 		"NO_INPUT=true",
 		"NO_COLOR=true",
@@ -75,11 +61,9 @@ func RunCommand(name string, arg ...string) error {
 		"OCKAM_OPENTELEMETRY_EXPORT=false",
 	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	err = cmd.Run()
+	err := cmd.Run()
 	if err != nil {
-		errMsg := "failed to run the command: " + cmd.String() + ", error: " + err.Error() + "\n" +
-			"stdout log file: " + stdout.Name() + "\n" +
-			"stderr log file: " + stderr.Name()
+		errMsg := "failed to run the command: " + cmd.String() + ",\nerror: " + err.Error()
 		return errors.New(errMsg)
 	}
 
