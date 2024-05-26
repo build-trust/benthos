@@ -1,18 +1,14 @@
 package ockam
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math/rand"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
-
-	"regexp"
 
 	"github.com/benthosdev/benthos/v4/public/service"
 )
@@ -49,10 +45,14 @@ func generateName() string {
 }
 
 func (n *Node) Create(log *service.Logger) error {
+	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Run ockam in foreground, piping its log into benthos. Ockam process exit whenever benthos exit.
-	// TODO: LOG_LEVEL should be set at the value set on benthos (info by default)
 	cmd := exec.CommandContext(ctx, n.OckamBin, "node", "create", "-f", "--node-config", n.Config)
 	log.Infof("Creating node with command: %v", cmd.String())
 	cmd.Env = append(os.Environ(),
@@ -60,50 +60,22 @@ func (n *Node) Create(log *service.Logger) error {
 		"NO_COLOR=true",
 		"OCKAM_DISABLE_UPGRADE_CHECK=true",
 		"OCKAM_OPENTELEMETRY_EXPORT=false",
-		"OCKAM_LOGGING=true",
-		"OCKAM_LOG_LEVEL=info",
 	)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		cancel()
-		return err
-	}
-	scanner := bufio.NewScanner(stdout)
-	splitter := regexp.MustCompile(`\s+`)
+
+	cmd.Stdout = devNull
+	cmd.Stderr = devNull
+	err = cmd.Start()
 	go func() {
-		// Pipe the logs from ockam into benthos
-		for scanner.Scan() {
-			// timestamp level line
-			logFields := splitter.Split(scanner.Text(), 3)
-			if len(logFields) == 3 {
-				switch logFields[1] {
-				case "DEBUG":
-					log.Debugf(logFields[2])
-				case "INFO":
-					log.Infof(logFields[2])
-				case "WARN":
-					log.Warnf(logFields[2])
-				case "ERROR":
-					log.Errorf(logFields[2])
-				}
-			}
-		}
-		if scanner.Err() != nil {
-			log.Errorf("%v", scanner.Err())
-			err = errors.Join(cmd.Process.Kill(), cmd.Wait())
-			if err != nil {
-				log.Errorf("%v", err)
-			}
-		} else {
-			err = cmd.Wait()
-			if err != nil {
-				log.Errorf("%v", err)
-			}
+		// Wait for the ockam process to exit, then delete the node.
+		err := cmd.Wait()
+		if err != nil {
+			log.Errorf("%v", err)
 		}
 		_ = n.Delete()
+		devNull.Close()
 		cancel()
 	}()
-	return cmd.Start()
+	return err
 }
 
 func (n *Node) Delete() error {
@@ -136,7 +108,7 @@ func GetOrCreateIdentifier(name string) (string, error) {
 	output, err := cmd.Output()
 	if err != nil {
 		return "", err
+	} else {
+		return strings.TrimSpace(string(output)), nil
 	}
-
-	return strings.TrimSpace(string(output)), nil
 }
