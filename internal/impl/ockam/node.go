@@ -107,7 +107,7 @@ func (n *Node) Create(log *service.Logger) error {
 }
 
 func (n *Node) Delete() error {
-	return RunCommand(n.OckamBin, "node", "delete", n.Name, "--yes")
+	return RunCommand(n.OckamBin, "node", "delete", n.Name, "--force", "--yes")
 }
 
 func (n *Node) IsRunning() bool {
@@ -131,7 +131,7 @@ func (n *Node) IsRunning() bool {
 	return strings.ToLower(status) == "running" || strings.ToLower(status) == "up"
 }
 
-func GetOrCreateIdentity(name string) (string, error) {
+func GetOrCreateIdentifier(name string) (string, error) {
 	cmd := exec.Command(GetOckamBin(), "identity", "create", name)
 	output, err := cmd.Output()
 	if err != nil {

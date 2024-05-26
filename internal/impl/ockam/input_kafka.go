@@ -2,7 +2,6 @@ package ockam
 
 import (
 	"context"
-	"errors"
 	"net"
 	"strconv"
 	"strings"
@@ -49,7 +48,7 @@ func newOckamKafkaInput(conf *service.ParsedConfig, mgr *service.Resources) (*oc
 
 	consumerIdentifier, err := conf.FieldString("consumer_identifier")
 	if err != nil {
-		consumerIdentifier, err = GetOrCreateIdentity("consumer")
+		consumerIdentifier, err = GetOrCreateIdentifier("consumer")
 		if err != nil {
 			return nil, err
 		}
@@ -57,7 +56,7 @@ func newOckamKafkaInput(conf *service.ParsedConfig, mgr *service.Resources) (*oc
 
 	producerIdentifier, err := conf.FieldString("producer_identifier")
 	if err != nil {
-		producerIdentifier, err = GetOrCreateIdentity("producer")
+		producerIdentifier, err = GetOrCreateIdentifier("producer")
 		if err != nil {
 			return nil, err
 		}
@@ -142,5 +141,6 @@ func (o *ockamKafkaInput) ReadBatch(ctx context.Context) (service.MessageBatch, 
 }
 
 func (o *ockamKafkaInput) Close(ctx context.Context) error {
-	return errors.Join(o.kafkaReader.Close(ctx), o.node.Delete())
+	_ = o.node.Delete()
+	return o.kafkaReader.Close(ctx)
 }

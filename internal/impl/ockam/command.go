@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"strings"
 	"syscall"
 )
 
@@ -55,13 +54,7 @@ func IsCommandInPath() bool {
 }
 
 func RunCommand(name string, arg ...string) error {
-	quotedArgs := make([]string, len(arg))
-	for i, a := range arg {
-		quotedArgs[i] = fmt.Sprintf("'%s'", a)
-	}
-
-	cmd := exec.Command("sh", "-c", "source ~/.ockam/env && "+name+" "+strings.Join(quotedArgs, " "))
-
+	cmd := exec.Command(name, arg...)
 	cmd.Env = append(os.Environ(),
 		"NO_INPUT=true",
 		"NO_COLOR=true",
@@ -74,6 +67,5 @@ func RunCommand(name string, arg ...string) error {
 		errMsg := "failed to run the command: " + cmd.String() + ",\nerror: " + err.Error()
 		return errors.New(errMsg)
 	}
-
 	return nil
 }
