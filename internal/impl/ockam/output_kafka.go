@@ -3,7 +3,6 @@ package ockam
 import (
 	"context"
 	"errors"
-	"strings"
 
 	"github.com/benthosdev/benthos/v4/internal/impl/kafka"
 	"github.com/benthosdev/benthos/v4/public/service"
@@ -115,7 +114,7 @@ func newOckamKafkaOutput(conf *service.ParsedConfig, log *service.Logger) (*ocka
 	if err != nil {
 		return nil, err
 	}
-	bootstrapServer := strings.Split(seedBrokers[0], ",")[0]
+	bootstrapServer := seedBrokers[0]
 	// TODO: Handle more that one seed brokers
 
 	_, tls, err := conf.FieldTLSToggled("tls")
