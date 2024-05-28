@@ -3,6 +3,7 @@ package ockam
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 
 	"github.com/benthosdev/benthos/v4/internal/impl/kafka"
@@ -13,7 +14,7 @@ import (
 func init() {
 	err := service.RegisterBatchInput("ockam_kafka", ockamKafkaInputConfig(),
 		func(conf *service.ParsedConfig, mgr *service.Resources) (service.BatchInput, error) {
-			i, err := newOckamKafkaInput(conf, mgr)
+			i, err := newOckamKafkaInput(conf, mgr, mgr.Logger())
 			if err != nil {
 				return nil, err
 			}
@@ -31,7 +32,21 @@ func ockamKafkaInputConfig() *service.ConfigSpec {
 		Field(service.NewStringField("ockam_node_address").Default("127.0.0.1:6262")).
 		Field(service.NewStringField("ockam_allow_producer").Default("self")).
 		Field(service.NewStringField("ockam_enrollment_ticket").Optional()).
-		Field(service.NewStringField("ockam_relay").Optional())
+		Field(service.NewStringField("ockam_relay").Optional()).
+		Field(service.NewStringListField("seed_brokers").
+			Description("A list of broker addresses to connect to in order to establish connections. If an item of the list contains commas it will be expanded into multiple addresses.").
+			Example([]string{"localhost:9092"}).
+			Example([]string{"foo:9092", "bar:9092"}).
+			Example([]string{"foo:9092,bar:9092"}).Default(GetRpkBrokersList()))
+}
+
+// Return the list of brokers if the RPK_BROKERS environment variable is defined
+func GetRpkBrokersList() []string {
+	brokers := os.Getenv("RPK_BROKERS")
+	if brokers == "" {
+		return []string{"localhost:9092"}
+	}
+	return strings.Split(brokers, ",")
 }
 
 //------------------------------------------------------------------------------
@@ -41,7 +56,7 @@ type ockamKafkaInput struct {
 	kafkaReader *kafka.FranzKafkaReader
 }
 
-func newOckamKafkaInput(conf *service.ParsedConfig, mgr *service.Resources) (*ockamKafkaInput, error) {
+func newOckamKafkaInput(conf *service.ParsedConfig, mgr *service.Resources, log *service.Logger) (*ockamKafkaInput, error) {
 	_, err := setupCommand()
 	if err != nil {
 		return nil, err
@@ -123,7 +138,13 @@ func newOckamKafkaInput(conf *service.ParsedConfig, mgr *service.Resources) (*oc
 	if len(seedBrokers) > 1 {
 		mgr.Logger().Warn("ockam_kafka input only supports one seed broker")
 	}
+	// If the environment variable is defined, use that definition instead
+	if GetRpkBrokersList() != nil {
+		seedBrokers = GetRpkBrokersList()
+	}
+
 	bootstrapServer := strings.Split(seedBrokers[0], ",")[0]
+	log.Info("bootstrap server " + bootstrapServer)
 	// TODO: Handle more that one seed brokers
 
 	kafkaOutletName := "benthos-kafka-outlet"

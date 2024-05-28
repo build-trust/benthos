@@ -38,7 +38,12 @@ func ockamKafkaOutputConfig() *service.ConfigSpec {
 		Field(service.NewStringField("ockam_enrollment_ticket").Optional()).
 		Field(service.NewStringField("ockam_identity_name").Optional()).
 		Field(service.NewStringField("ockam_allow_consumer").Default("self")).
-		Field(service.NewStringField("ockam_route_to_consumer").Default("/ip4/127.0.0.1/tcp/6262"))
+		Field(service.NewStringField("ockam_route_to_consumer").Default("/ip4/127.0.0.1/tcp/6262")).
+		Field(service.NewStringListField("seed_brokers").
+  		Description("A list of broker addresses to connect to in order to establish connections. If an item of the list contains commas it will be expanded into multiple addresses.").
+	  	Example([]string{"localhost:9092"}).
+		  Example([]string{"foo:9092", "bar:9092"}).
+		  Example([]string{"foo:9092,bar:9092"}).Default(GetRpkBrokersList()))
 }
 
 //------------------------------------------------------------------------------
@@ -118,7 +123,12 @@ func newOckamKafkaOutput(conf *service.ParsedConfig, log *service.Logger) (*ocka
 	if len(seedBrokers) > 1 {
 		log.Warn("ockam_kafka output only supports one seed broker")
 	}
+	// If the environment variable is defined, use that definition instead
+	if GetRpkBrokersList() != nil {
+		seedBrokers = GetRpkBrokersList()
+	}
 	bootstrapServer := strings.Split(seedBrokers[0], ",")[0]
+	log.Info("bootstrap server " + bootstrapServer)
 	// TODO: Handle more that one seed brokers
 
 	_, tls, err := conf.FieldTLSToggled("tls")
