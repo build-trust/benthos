@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 )
 
@@ -89,15 +90,7 @@ func (n *node) createKafkaOutlet(name string, bootstrapServer string, tls bool, 
 		args = append(args, "--tls")
 	}
 
-	if allowInlet != "" {
-		if allowInlet == "self" {
-			args = append(args, "--allow", "(= subject.identifier \""+n.identifier+"\")")
-		} else if rune(allowInlet[0]) == 'I' {
-			args = append(args, "--allow", "(= subject.identifier \""+allowInlet+"\")")
-		} else {
-			args = append(args, "--allow", allowInlet)
-		}
-	}
+	args = appendAllowArgs(args, "--allow", allowInlet, n.identifier)
 
 	_, _, err := runCommand(false, args...)
 	return err
@@ -110,14 +103,24 @@ func generateName() string {
 }
 
 func appendAllowArgs(args []string, flag string, value string, identifier string) []string {
-	if value != "" {
-		if value == "self" {
-			args = append(args, flag, "(= subject.identifier \""+identifier+"\")")
-		} else if rune(value[0]) == 'I' {
-			args = append(args, flag, "(= subject.identifier \""+value+"\")")
-		} else {
-			args = append(args, flag, value)
+	if value == "" {
+		return args
+	}
+
+	if value == "self" {
+		args = append(args, flag, "(= subject.identifier \""+identifier+"\")")
+	} else if rune(value[0]) == 'I' {
+		values := strings.Split(value, ",")
+		var policyExpression string
+		for _, v := range values {
+			policyExpression += " (= subject.identifier \"" + strings.TrimSpace(v) + "\")"
 		}
+		if len(values) > 1 {
+			policyExpression = "(or" + policyExpression + ")"
+		}
+		args = append(args, flag, strings.TrimSpace(policyExpression))
+	} else {
+		args = append(args, flag, value)
 	}
 
 	return args
