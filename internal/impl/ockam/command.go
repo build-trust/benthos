@@ -24,6 +24,7 @@ func runCommand(capture bool, arg ...string) (string, string, error) {
 
 	cmd := exec.Command(bin, arg...)
 	cmd.Env = append(os.Environ(),
+		"OCKAM_HOME="+ockamHome(),
 		"NO_INPUT=true",
 		"NO_COLOR=true",
 		"OCKAM_DISABLE_UPGRADE_CHECK=true",
@@ -283,14 +284,22 @@ func ockamHome() string {
 		return o
 	}
 
+	fallBackHomeDir := filepath.Join("/tmp", ".ockam")
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join("/tmp", ".ockam")
+		return fallBackHomeDir
 	}
 
 	_, err = os.Stat(homeDir)
 	if os.IsNotExist(err) {
-		return filepath.Join("/tmp", ".ockam")
+		return fallBackHomeDir
+	}
+
+	err = os.MkdirAll(filepath.Join(homeDir, ".ockam"), os.ModePerm)
+	if os.IsPermission(err) {
+		return fallBackHomeDir
+
 	}
 
 	return filepath.Join(homeDir, ".ockam")
