@@ -135,7 +135,7 @@ type FranzKafkaReader struct {
 	clientID        string
 	rackID          string
 	consumerGroup   string
-	tlsConf         *tls.Config
+	TlsConf         *tls.Config
 	saslConfs       []sasl.Mechanism
 	checkpointLimit int
 	startFromOldest bool
@@ -236,7 +236,7 @@ func NewFranzKafkaReaderFromConfig(conf *service.ParsedConfig, res *service.Reso
 		return nil, err
 	}
 	if tlsEnabled {
-		f.tlsConf = tlsConf
+		f.TlsConf = tlsConf
 	}
 	if f.multiHeader, err = conf.FieldBool("multi_header"); err != nil {
 		return nil, err
@@ -636,8 +636,8 @@ func (f *FranzKafkaReader) Connect(ctx context.Context) error {
 		)
 	}
 
-	if f.tlsConf != nil {
-		clientOpts = append(clientOpts, kgo.DialTLSConfig(f.tlsConf))
+	if f.TlsConf != nil {
+		clientOpts = append(clientOpts, kgo.DialTLSConfig(f.TlsConf))
 	}
 
 	if f.regexPattern {

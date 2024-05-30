@@ -134,6 +134,8 @@ func newOckamKafkaInput(conf *service.ParsedConfig, mgr *service.Resources) (*oc
 
 	// Override the list of SeedBrokers that would be used by kafka_franz, set it to the address of the kafka inlet
 	kafkaReader.SeedBrokers = []string{kafkaInletAddress}
+	// TLS is used by Ockam's outlet only, the kafka_franz writer will communicate in plaintext with the Ockam's inlet
+	kafkaReader.TlsConf = nil
 	return &ockamKafkaInput{*n, kafkaReader}, nil
 }
 

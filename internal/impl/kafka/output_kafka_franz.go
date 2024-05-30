@@ -126,7 +126,7 @@ type FranzKafkaWriter struct {
 	clientID         string
 	rackID           string
 	idempotentWrite  bool
-	tlsConf          *tls.Config
+	TlsConf          *tls.Config
 	saslConfs        []sasl.Mechanism
 	metaFilter       *service.MetadataFilter
 	partitioner      kgo.Partitioner
@@ -255,7 +255,7 @@ func NewFranzKafkaWriterFromConfig(conf *service.ParsedConfig, log *service.Logg
 		return nil, err
 	}
 	if tlsEnabled {
-		f.tlsConf = tlsConf
+		f.TlsConf = tlsConf
 	}
 	if f.saslConfs, err = saslMechanismsFromConfig(conf); err != nil {
 		return nil, err
@@ -281,8 +281,8 @@ func (f *FranzKafkaWriter) Connect(ctx context.Context) error {
 		kgo.Rack(f.rackID),
 		kgo.WithLogger(&kgoLogger{f.log}),
 	}
-	if f.tlsConf != nil {
-		clientOpts = append(clientOpts, kgo.DialTLSConfig(f.tlsConf))
+	if f.TlsConf != nil {
+		clientOpts = append(clientOpts, kgo.DialTLSConfig(f.TlsConf))
 	}
 	if f.partitioner != nil {
 		clientOpts = append(clientOpts, kgo.RecordPartitioner(f.partitioner))
