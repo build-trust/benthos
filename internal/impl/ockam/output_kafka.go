@@ -35,10 +35,17 @@ func init() {
 func ockamKafkaOutputConfig() *service.ConfigSpec {
 	return kafka.FranzKafkaOutputConfig().
 		Summary("Ockam").
+		Field(service.NewStringListField("seed_brokers").Optional().
+			Description("A list of broker addresses to connect to in order to establish connections. If an item of the list contains commas it will be expanded into multiple addresses.").
+			Example([]string{"localhost:9092"}).
+			Example([]string{"foo:9092", "bar:9092"}).
+			Example([]string{"foo:9092,bar:9092"})).
 		Field(service.NewStringField("ockam_enrollment_ticket").Optional()).
 		Field(service.NewStringField("ockam_identity_name").Optional()).
-		Field(service.NewStringField("ockam_allow_consumer").Default("self")).
-		Field(service.NewStringField("ockam_route_to_consumer").Default("/ip4/127.0.0.1/tcp/6262"))
+		Field(service.NewStringField("ockam_allow_consumer").Default("self").Optional()).
+		Field(service.NewStringField("ockam_route_to_consumer").Default("/ip4/127.0.0.1/tcp/6262")).
+		Field(service.NewStringField("ockam_allow").Default("self").Optional()).
+		Field(service.NewStringField("ockam_routeToKafkaOutlet").Default("self").Optional())
 }
 
 //------------------------------------------------------------------------------
@@ -98,7 +105,20 @@ func newOckamKafkaOutput(conf *service.ParsedConfig, log *service.Logger) (*ocka
 	if err != nil {
 		return nil, err
 	}
-	err = n.createKafkaInlet("benthos-kafka-inlet", kafkaInletAddress, "self", true, routeToConsumer, "self", "", allowConsumer)
+
+	var routeToKafkaOutlet string
+	routeToKafkaOutlet, err = conf.FieldString("ockam_routeToKafkaOutlet")
+	if err != nil {
+		return nil, err
+	}
+
+	var allowOutlet string
+	allowOutlet, err = conf.FieldString("ockam_allow")
+	if err != nil {
+		return nil, err
+	}
+
+	err = n.createKafkaInlet("benthos-kafka-inlet", kafkaInletAddress, routeToKafkaOutlet, true, routeToConsumer, allowOutlet, "", allowConsumer)
 	if err != nil {
 		return nil, err
 	}
@@ -110,32 +130,35 @@ func newOckamKafkaOutput(conf *service.ParsedConfig, log *service.Logger) (*ocka
 		return nil, err
 	}
 
-	// Use the first "seed_brokers" field item as the bootstrapServer argument for Ockam.
-	seedBrokers, err := conf.FieldStringList("seed_brokers")
-	if err != nil {
-		return nil, err
-	}
-	if len(seedBrokers) > 1 {
-		log.Warn("ockam_kafka output only supports one seed broker")
-	}
-	bootstrapServer := strings.Split(seedBrokers[0], ",")[0]
-	// TODO: Handle more that one seed brokers
+	if routeToKafkaOutlet == "self" {
+		// Use the first "seed_brokers" field item as the bootstrapServer argument for Ockam.
+		seedBrokers, err := conf.FieldStringList("seed_brokers")
+		if err != nil {
+			return nil, err
+		}
+		if len(seedBrokers) > 1 {
+			log.Warn("ockam_kafka output only supports one seed broker")
+		}
+		bootstrapServer := strings.Split(seedBrokers[0], ",")[0]
+		// TODO: Handle more that one seed brokers
 
-	_, tls, err := conf.FieldTLSToggled("tls")
-	if err != nil {
-		tls = false
-	}
+		_, tls, err := conf.FieldTLSToggled("tls")
+		if err != nil {
+			tls = false
+		}
 
-	kafkaOutletName := "benthos-kafka-outlet"
-	err = n.createKafkaOutlet(kafkaOutletName, bootstrapServer, tls, "self")
-	if err != nil {
-		return nil, err
+		kafkaOutletName := "benthos-kafka-outlet"
+		err = n.createKafkaOutlet(kafkaOutletName, bootstrapServer, tls, "self")
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Override the list of SeedBrokers that would be used by kafka_franz, set it to the address of the kafka inlet
 	kafkaWriter.SeedBrokers = []string{kafkaInletAddress}
 	// TLS is used by Ockam's outlet only, the kafka_franz writer will communicate in plaintext with the Ockam's inlet
 	kafkaWriter.TlsConf = nil
+
 	return &ockamKafkaOutput{kafkaWriter, *n}, nil
 }
 

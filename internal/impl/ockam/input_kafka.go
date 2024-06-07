@@ -27,11 +27,18 @@ func init() {
 func ockamKafkaInputConfig() *service.ConfigSpec {
 	return kafka.FranzKafkaInputConfig().
 		Summary(`Ockam`).
+		Field(service.NewStringListField("seed_brokers").Optional().
+			Description("A list of broker addresses to connect to in order to establish connections. If an item of the list contains commas it will be expanded into multiple addresses.").
+			Example([]string{"localhost:9092"}).
+			Example([]string{"foo:9092", "bar:9092"}).
+			Example([]string{"foo:9092,bar:9092"})).
 		Field(service.NewStringField("ockam_identity_name").Optional()).
-		Field(service.NewStringField("ockam_node_address").Default("127.0.0.1:6262")).
-		Field(service.NewStringField("ockam_allow_producer").Default("self")).
+		Field(service.NewStringField("ockam_node_address").Default("127.0.0.1:6262").Optional()).
+		Field(service.NewStringField("ockam_allow_producer").Default("self").Optional()).
 		Field(service.NewStringField("ockam_enrollment_ticket").Optional()).
-		Field(service.NewStringField("ockam_relay").Optional())
+		Field(service.NewStringField("ockam_relay").Optional()).
+		Field(service.NewStringField("ockam_allow").Default("self").Optional()).
+		Field(service.NewStringField("ockam_routeToKafkaOutlet").Default("self").Optional())
 }
 
 //------------------------------------------------------------------------------
@@ -97,45 +104,59 @@ func newOckamKafkaInput(conf *service.ParsedConfig, mgr *service.Resources) (*oc
 	if err != nil {
 		return nil, err
 	}
-	err = n.createKafkaInlet("benthos-kafka-inlet", kafkaInletAddress, "self", true, "self", "self", allowProducer, "")
+
+	var routeToKafkaOutlet string
+	routeToKafkaOutlet, err = conf.FieldString("ockam_routeToKafkaOutlet")
 	if err != nil {
 		return nil, err
 	}
 
-	// ---- Create Ockam Kafka Outlet ----
-
-	_, tls, err := conf.FieldTLSToggled("tls")
+	var allowOutlet string
+	allowOutlet, err = conf.FieldString("ockam_allow")
 	if err != nil {
-		tls = false
+		return nil, err
 	}
-	// TODO: Handle other tls fields in kafka franz
 
+	err = n.createKafkaInlet("benthos-kafka-inlet", kafkaInletAddress, routeToKafkaOutlet, true, "self", allowOutlet, allowProducer, "")
+	if err != nil {
+		return nil, err
+	}
+
+	// ---- Create Ockam Kafka Outlet if necessary ----
 	kafkaReader, err := kafka.NewFranzKafkaReaderFromConfig(conf, mgr)
 	if err != nil {
 		return nil, err
 	}
 
-	// Use the first "seed_brokers" field item as the bootstrapServer argument for Ockam.
-	seedBrokers, err := conf.FieldStringList("seed_brokers")
-	if err != nil {
-		return nil, err
-	}
-	if len(seedBrokers) > 1 {
-		mgr.Logger().Warn("ockam_kafka input only supports one seed broker")
-	}
-	bootstrapServer := strings.Split(seedBrokers[0], ",")[0]
-	// TODO: Handle more that one seed brokers
+	if routeToKafkaOutlet == "self" {
+		// TODO: Handle other tls fields in kafka franz
+		_, tls, err := conf.FieldTLSToggled("tls")
+		if err != nil {
+			tls = false
+		}
+		// Use the first "seed_brokers" field item as the bootstrapServer argument for Ockam.
+		seedBrokers, err := conf.FieldStringList("seed_brokers")
+		if err != nil {
+			return nil, err
+		}
+		if len(seedBrokers) > 1 {
+			mgr.Logger().Warn("ockam_kafka input only supports one seed broker")
+		}
+		bootstrapServer := strings.Split(seedBrokers[0], ",")[0]
+		// TODO: Handle more that one seed brokers
 
-	kafkaOutletName := "benthos-kafka-outlet"
-	err = n.createKafkaOutlet(kafkaOutletName, bootstrapServer, tls, "self")
-	if err != nil {
-		return nil, err
+		kafkaOutletName := "benthos-kafka-outlet"
+		err = n.createKafkaOutlet(kafkaOutletName, bootstrapServer, tls, "self")
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Override the list of SeedBrokers that would be used by kafka_franz, set it to the address of the kafka inlet
 	kafkaReader.SeedBrokers = []string{kafkaInletAddress}
 	// TLS is used by Ockam's outlet only, the kafka_franz writer will communicate in plaintext with the Ockam's inlet
 	kafkaReader.TlsConf = nil
+
 	return &ockamKafkaInput{*n, kafkaReader}, nil
 }
 
