@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"math/rand"
 	"time"
+	"strings"
 )
 
 type node struct {
@@ -67,7 +68,8 @@ func newNode(identityName string, address string, ticket string, relay string) (
 }
 
 func (n *node) create() error {
-	_, _, err := runCommand(false, "node", "create", "--node-config", n.config)
+	singleQuotedConfiguration := strings.ReplaceAll(n.config, `"`, `'`)
+	_, _, err := runCommand(false, "-vv", "node", "create", "--configuration", singleQuotedConfiguration)
 	return err
 }
 
